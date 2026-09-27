@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { MapPin, Calendar, ChevronRight } from "lucide-react";
+import { MapPin, Calendar } from "lucide-react";
 import { MatchStatus, MatchType } from "@/features/match/utils/match.types";
 
 export interface MatchCardData {
@@ -19,55 +19,55 @@ export interface MatchCardData {
 const STATUS_STYLES: Record<
   MatchStatus,
   {
-    badge: string;
-    dot: string;
+    ribbon: string;
+    ribbonText: string;
     label: string;
-    stripe: string;
+    scoreColor: string;
     pulse?: boolean;
   }
 > = {
   SCHEDULED: {
-    badge: "bg-gray-50 text-gray-600 ring-1 ring-inset ring-gray-200",
-    dot: "bg-gray-400",
+    ribbon: "bg-[#F4F6F1]",
+    ribbonText: "text-[#6B7566]",
     label: "Scheduled",
-    stripe: "bg-gray-200",
+    scoreColor: "text-[#C4CCC0]",
   },
   LIVE: {
-    badge: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-200",
-    dot: "bg-red-500",
+    ribbon: "bg-[#C93B40]",
+    ribbonText: "text-white",
     label: "Live",
-    stripe: "bg-[#E5484D]",
+    scoreColor: "text-[#C93B40]",
     pulse: true,
   },
   FINISHED: {
-    badge: "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200",
-    dot: "bg-emerald-500",
-    label: "Finished",
-    stripe: "bg-emerald-400",
+    ribbon: "bg-[#14532D]",
+    ribbonText: "text-white",
+    label: "FT",
+    scoreColor: "text-[#14181C]",
   },
   POSTPONED: {
-    badge: "bg-yellow-50 text-yellow-700 ring-1 ring-inset ring-yellow-200",
-    dot: "bg-yellow-500",
+    ribbon: "bg-amber-400",
+    ribbonText: "text-amber-950",
     label: "Postponed",
-    stripe: "bg-yellow-400",
+    scoreColor: "text-[#A0A89A]",
   },
   CANCELLED: {
-    badge: "bg-gray-100 text-gray-400 ring-1 ring-inset ring-gray-200",
-    dot: "bg-gray-300",
+    ribbon: "bg-[#D9DED2]",
+    ribbonText: "text-[#6B7566]",
     label: "Cancelled",
-    stripe: "bg-gray-300",
+    scoreColor: "text-[#C4CCC0]",
   },
   ABANDONED: {
-    badge: "bg-gray-100 text-gray-500 ring-1 ring-inset ring-gray-200",
-    dot: "bg-gray-400",
+    ribbon: "bg-[#C4CCC0]",
+    ribbonText: "text-[#4A515B]",
     label: "Abandoned",
-    stripe: "bg-gray-400",
+    scoreColor: "text-[#A0A89A]",
   },
   SUSPENDED: {
-    badge: "bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-200",
-    dot: "bg-orange-500",
+    ribbon: "bg-orange-400",
+    ribbonText: "text-white",
     label: "Suspended",
-    stripe: "bg-orange-400",
+    scoreColor: "text-orange-500",
   },
 };
 
@@ -110,84 +110,95 @@ export function MatchCard({ match }: { match: MatchCardData }) {
     homeScore !== null &&
     awayScore !== null;
 
-  const { badge, dot, label, stripe, pulse } = STATUS_STYLES[status];
+  const { ribbon, ribbonText, label, scoreColor, pulse } = STATUS_STYLES[status];
   const { date, time } = formatDateParts(matchDate);
 
   return (
     <Link
       href={`/moderator/matches/${id}/record-stats`}
-      className="group relative flex overflow-hidden rounded-xl border border-gray-200 bg-white transition-all duration-200 hover:-translate-y-px hover:border-gray-300 hover:shadow-md"
+      className="group relative grid grid-cols-[36px_1fr_auto] items-stretch overflow-hidden rounded-lg border border-[#E2E7DD] bg-white transition-all duration-150 hover:border-[#14532D]/30 hover:shadow-[0_4px_14px_-8px_rgba(20,83,45,0.32)]"
     >
-      {/* Left status stripe */}
-      <span className={`w-1 shrink-0 ${stripe}`} />
-
-      <div className="flex min-w-0 flex-1 flex-col gap-3 p-3.5">
-        {/* Header: type + status */}
-        <div className="flex items-center justify-between gap-2">
-          <span className="rounded-md bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500 ring-1 ring-inset ring-gray-100">
-            {matchType}
-          </span>
-
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge}`}
-          >
+      {/* ── Left ribbon: status word, vertical ─────────── */}
+      <div
+        className={`relative flex items-center justify-center ${ribbon} ${ribbonText}`}
+      >
+        <span
+          className="flex flex-col items-center gap-1"
+          style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+        >
+          {pulse && (
             <span className="relative flex h-1.5 w-1.5">
-              {pulse && (
-                <span
-                  className={`absolute inline-flex h-full w-full animate-ping rounded-full ${dot} opacity-75`}
-                />
-              )}
-              <span
-                className={`relative inline-flex h-1.5 w-1.5 rounded-full ${dot}`}
-              />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-90" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
             </span>
+          )}
+          <span className="text-[9.5px] font-bold uppercase tracking-[0.18em]">
             {label}
+          </span>
+        </span>
+      </div>
+
+      {/* ── Middle: teams + meta ───────────────────────── */}
+      <div className="flex min-w-0 flex-col justify-center gap-1 px-3 py-2">
+        {/* Row 1: match type + date/time */}
+        <div className="flex items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-[0.14em] text-[#A0A89A]">
+          <span className="text-[#8B9388]">{matchType}</span>
+          <span className="text-[#D9DED2]">·</span>
+          <span className="inline-flex items-center gap-1 font-mono tabular-nums">
+            <Calendar className="h-2.5 w-2.5" />
+            {date}
+          </span>
+          <span className="text-[#D9DED2]">·</span>
+          <span className="font-mono tabular-nums">{time}</span>
+        </div>
+
+        {/* Row 2: home team */}
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-tight text-[#14181C] transition-colors group-hover:text-[#14532D]">
+            {homeTeamName ?? "TBD"}
           </span>
         </div>
 
-        {/* Teams + score */}
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-          <span className="truncate text-sm font-semibold text-gray-900">
-            {homeTeamName ?? "TBD"}
-          </span>
-
-          <span
-            className={`shrink-0 rounded-md px-2 py-1 font-mono text-sm font-bold tabular-nums ${
-              hasScore
-                ? "bg-gray-900 text-white"
-                : "bg-gray-100 text-[10px] font-medium uppercase tracking-wider text-gray-500"
-            }`}
-          >
-            {hasScore ? `${homeScore}–${awayScore}` : "vs"}
-          </span>
-
-          <span className="truncate text-right text-sm font-semibold text-gray-900">
+        {/* Row 3: away team */}
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-tight text-[#14181C] transition-colors group-hover:text-[#14532D]">
             {awayTeamName ?? "TBD"}
           </span>
         </div>
 
-        {/* Footer: date + venue */}
-        <div className="flex items-center justify-between gap-2 border-t border-dashed border-gray-100 pt-2.5">
-          <div className="flex min-w-0 items-center gap-3 text-[11px] text-gray-500">
-            <span className="inline-flex items-center gap-1">
-              <Calendar className="h-3 w-3 text-gray-400" />
-              <span className="font-mono tabular-nums">{date}</span>
-            </span>
-            <span className="font-mono tabular-nums text-gray-400">
-              {time}
-            </span>
+        {/* Row 4: venue */}
+        {stadium && (
+          <div className="mt-0.5 flex items-center gap-1 text-[10px] text-[#8B9388]">
+            <MapPin className="h-2.5 w-2.5 shrink-0" />
+            <span className="truncate">{stadium}</span>
           </div>
+        )}
+      </div>
 
-          <div className="flex min-w-0 items-center gap-2">
-            {stadium && (
-              <span className="inline-flex min-w-0 items-center gap-1 text-[11px] text-gray-400">
-                <MapPin className="h-3 w-3 shrink-0" />
-                <span className="truncate">{stadium}</span>
-              </span>
-            )}
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-gray-300 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-gray-500" />
-          </div>
-        </div>
+      {/* ── Right: stacked scores ──────────────────────── */}
+      <div className="flex flex-col items-center justify-center gap-1.5 border-l border-[#EDF0E8] bg-[#FAFBF7] px-3">
+        {hasScore ? (
+          <>
+            <span
+              className={`font-mono text-[18px] font-bold leading-none tabular-nums ${scoreColor}`}
+            >
+              {homeScore}
+            </span>
+            <span
+              aria-hidden
+              className="h-px w-4 bg-[#D9DED2]"
+            />
+            <span
+              className={`font-mono text-[18px] font-bold leading-none tabular-nums ${scoreColor}`}
+            >
+              {awayScore}
+            </span>
+          </>
+        ) : (
+          <span className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-[#C4CCC0]">
+            vs
+          </span>
+        )}
       </div>
     </Link>
   );

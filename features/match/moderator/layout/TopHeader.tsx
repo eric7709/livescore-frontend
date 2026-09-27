@@ -90,15 +90,12 @@ export function TopHeader({ onMenuClick }: TopHeaderProps) {
               className="hidden h-3.5 w-3.5 shrink-0 text-gray-300 sm:block"
               aria-hidden
             />
-            <span className="truncate font-semibold text-gray-900">
-              {sub}
-            </span>
           </>
         )}
 
         {/* Mobile: single-line fallback */}
         <span className="truncate font-semibold text-gray-900 sm:hidden">
-          {sub ? `${label} / ${sub}` : isRoot ? "Moderator" : label}
+          {sub ? `Match ID: ${sub}` : isRoot ? "Moderator" : label}
         </span>
       </nav>
 

@@ -3,21 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { AlertCircle, MapPin, Calendar, Trophy } from "lucide-react";
+import { AlertCircle, MapPin, Calendar } from "lucide-react";
 import { MatchPeriod, MatchStatus } from "@/features/match/utils/match.types";
 import { useGetMatchById } from "@/features/match/utils/match.api";
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/* Constants                                                           */
+/* ------------------------------------------------------------------ */
 
-// Mirrors MatchEventService#PERIOD_BASE_MINUTE on the backend so the clock
-// shown here always agrees with the minute stamped on new match events.
-//
-// NOTE: every period that represents *live play* (as opposed to a break)
-// must appear here AND in RUNNING_CLOCK_PERIODS below, or useLiveMinute will
-// silently return null for it and it'll be badged as a static break instead
-// of a running clock.
 const PERIOD_BASE_MINUTE: Partial<Record<MatchPeriod, number>> = {
   FIRST_HALF: 0,
   SECOND_HALF: 45,
@@ -26,11 +19,6 @@ const PERIOD_BASE_MINUTE: Partial<Record<MatchPeriod, number>> = {
   PENALTIES: 120,
 };
 
-// Regulation length of each running-play period. Once the live clock passes
-// this, we stop ticking the displayed minute up and switch to "cap+N"
-// stoppage-time notation instead (e.g. "45+3'") until the period changes.
-// PENALTIES has no regulation length, so it's intentionally omitted and
-// never gets capped.
 const PERIOD_CAP_MINUTE: Partial<Record<MatchPeriod, number>> = {
   FIRST_HALF: 45,
   SECOND_HALF: 90,
@@ -38,8 +26,6 @@ const PERIOD_CAP_MINUTE: Partial<Record<MatchPeriod, number>> = {
   EXTRA_TIME_SECOND_HALF: 120,
 };
 
-// Mirrors MatchEventService#LIVE_PLAY_PERIODS — the only periods where a
-// running clock makes sense. Breaks (HALF_TIME, etc.) get a static badge.
 const RUNNING_CLOCK_PERIODS = new Set<MatchPeriod>([
   "FIRST_HALF",
   "SECOND_HALF",
@@ -48,10 +34,10 @@ const RUNNING_CLOCK_PERIODS = new Set<MatchPeriod>([
   "PENALTIES",
 ]);
 
-// Static (non-live) label for every status that isn't LIVE. FINISHED prefers
-// "Full-time" wording, handled separately in StatusBadge since that's the
-// football-specific term; this map covers the rest of MatchStatus.
-const STATUS_BADGE_LABELS: Record<Exclude<MatchStatus, "LIVE" | "FINISHED">, string> = {
+const STATUS_BADGE_LABELS: Record<
+  Exclude<MatchStatus, "LIVE" | "FINISHED">,
+  string
+> = {
   SCHEDULED: "Upcoming",
   POSTPONED: "Postponed",
   CANCELLED: "Cancelled",
@@ -71,20 +57,19 @@ const PERIOD_BADGE_LABELS: Record<MatchPeriod, string> = {
   FULL_TIME: "Full-time",
 };
 
-// How long the score-changed highlight stays visible.
-const SCORE_FLASH_DURATION_MS = 2500;
+const SCORE_FLASH_DURATION_MS = 20_000;
 
-// A running-play minute, already capped at the period's regulation length.
-// stoppage is 0 while inside regulation time and > 0 once play has run past
-// the cap (e.g. { minute: 45, stoppage: 3 } displays as "45+3'").
+/** Goal sound effect, served from /public. */
+const GOAL_SOUND_SRC = "/goalsound.mp3";
+
 interface LiveMinute {
   minute: number;
   stoppage: number;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------ */
+/* Helpers                                                             */
+/* ------------------------------------------------------------------ */
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);
@@ -107,33 +92,208 @@ function formatDateTime(iso: string): string {
   return `${day} · ${time}`;
 }
 
-// matchDate is the scheduled kickoff and is always present. startedAt is
-// only set once the match has actually kicked off, so once it exists it's
-// the more accurate "time started" — matchDate can be a stale scheduled
-// slot if kickoff was delayed.
-function resolveKickoffLabel(matchDate: string, startedAt: string | null): string {
-  if (startedAt) {
-    return `Kicked off ${formatDateTime(startedAt)}`;
-  }
+function resolveKickoffLabel(
+  matchDate: string,
+  startedAt: string | null,
+): string {
+  if (startedAt) return `Kicked off ${formatDateTime(startedAt)}`;
   return formatDateTime(matchDate);
 }
 
 function getCompetitionInitials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
-  return words.slice(0, 2).map(w => w[0]).join('').toUpperCase();
+  return words
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
 }
 
-// Renders a LiveMinute as display text: "12'" inside regulation time, or
-// "45+3'" once play has run past the period's cap.
 function formatLiveMinute({ minute, stoppage }: LiveMinute): string {
   return stoppage > 0 ? `${minute}+${stoppage}'` : `${minute}'`;
 }
 
-// Detects an increase in a score value across renders and exposes a boolean
-// that flips true for SCORE_FLASH_DURATION_MS then auto-resets. Only flags a
-// real increase (not the first render, not a reset to null/0), so it's safe
-// to call unconditionally for both teams every render.
+/* ------------------------------------------------------------------ */
+/* Audio — shared <audio>, correctly primed and loaded                 */
+/* ------------------------------------------------------------------ */
+
+let sharedGoalAudio: HTMLAudioElement | null = null;
+let audioUnlocked = false;
+let unlockListenersAttached = false;
+let audioLoadPromise: Promise<void> | null = null;
+
+/**
+ * Lazily create the shared <audio> element and start loading the file.
+ * Explicit `.load()` is required on some browsers — setting `.src` alone
+ * does not start fetching when the element is detached from the DOM.
+ */
+function getGoalAudio(): HTMLAudioElement | null {
+  if (typeof window === "undefined") return null;
+
+  if (!sharedGoalAudio) {
+    const el = new Audio();
+    el.src = GOAL_SOUND_SRC;
+    el.preload = "auto";
+    el.volume = 1;
+    el.load();
+    sharedGoalAudio = el;
+
+    audioLoadPromise = new Promise<void>((resolve) => {
+      if (el.readyState >= 3 /* HAVE_FUTURE_DATA */) {
+        resolve();
+        return;
+      }
+      const done = () => {
+        el.removeEventListener("canplaythrough", done);
+        el.removeEventListener("loadeddata", done);
+        resolve();
+      };
+      el.addEventListener("canplaythrough", done, { once: true });
+      el.addEventListener("loadeddata", done, { once: true });
+    });
+  }
+
+  return sharedGoalAudio;
+}
+
+/**
+ * Muted play/pause tick to earn autoplay unlock. Cheap no-op once unlocked.
+ */
+function primeAudioUnlock() {
+  if (audioUnlocked) return;
+  const audio = getGoalAudio();
+  if (!audio) return;
+
+  const wasMuted = audio.muted;
+  const wasVolume = audio.volume;
+
+  audio.muted = true;
+  audio.volume = 0;
+
+  const attempt = audio.play();
+  if (attempt && typeof attempt.then === "function") {
+    attempt
+      .then(() => {
+        audio.pause();
+        try {
+          audio.currentTime = 0;
+        } catch {
+          /* not seekable yet — ignore */
+        }
+        audio.muted = wasMuted;
+        audio.volume = wasVolume;
+        audioUnlocked = true;
+      })
+      .catch(() => {
+        audio.muted = wasMuted;
+        audio.volume = wasVolume;
+      });
+  }
+}
+
+function attachAudioUnlockListeners() {
+  if (unlockListenersAttached || typeof window === "undefined") return;
+  unlockListenersAttached = true;
+
+  const unlock = () => primeAudioUnlock();
+
+  window.addEventListener("pointerdown", unlock);
+  window.addEventListener("keydown", unlock);
+  window.addEventListener("touchstart", unlock, { passive: true });
+  window.addEventListener("focus", unlock);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") primeAudioUnlock();
+  });
+}
+
+/**
+ * Play the goal sound. Waits for load if necessary so we never call
+ * play() on an empty element. Fully silent on failure.
+ */
+async function playGoalSound() {
+  const audio = getGoalAudio();
+  if (!audio) return;
+
+  try {
+    if (audio.readyState < 3 && audioLoadPromise) {
+      await Promise.race([
+        audioLoadPromise,
+        new Promise<void>((resolve) => setTimeout(resolve, 1500)),
+      ]);
+    }
+
+    audio.muted = false;
+    audio.volume = 1;
+
+    try {
+      audio.currentTime = 0;
+    } catch {
+      /* not seekable — play from current position */
+    }
+
+    const attempt = audio.play();
+    if (attempt && typeof attempt.catch === "function") {
+      await attempt.catch(() => {
+        /* autoplay blocked — silent */
+      });
+    }
+  } catch {
+    /* defensive — never throw from audio */
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Hooks                                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A live minute based on `periodStartedAt`, capped with stoppage notation.
+ * Always called unconditionally (before any early return) so hook order
+ * stays stable across renders.
+ */
+function useLiveMinute(
+  periodStartedAt: string | null | undefined,
+  period: MatchPeriod | undefined,
+  isLive: boolean,
+): LiveMinute | null {
+  const [now, setNow] = useState(() => Date.now());
+
+  const tickable = isLive && !!period && RUNNING_CLOCK_PERIODS.has(period);
+
+  useEffect(() => {
+    if (!tickable) return;
+    setNow(Date.now());
+    const interval = setInterval(() => setNow(Date.now()), 10_000);
+    return () => clearInterval(interval);
+  }, [tickable, periodStartedAt, period]);
+
+  return useMemo(() => {
+    if (!tickable || !period || !periodStartedAt) return null;
+
+    const baseMinute = PERIOD_BASE_MINUTE[period];
+    if (baseMinute === undefined) return null;
+
+    const startedAtMs = new Date(periodStartedAt).getTime();
+    if (Number.isNaN(startedAtMs)) return null;
+
+    const elapsedMinutes = Math.max(
+      0,
+      Math.floor((now - startedAtMs) / 60_000),
+    );
+    const rawMinute = baseMinute + elapsedMinutes;
+
+    const cap = PERIOD_CAP_MINUTE[period];
+    if (cap !== undefined && rawMinute > cap) {
+      return { minute: cap, stoppage: rawMinute - cap };
+    }
+    return { minute: rawMinute, stoppage: 0 };
+  }, [periodStartedAt, period, tickable, now]);
+}
+
+/**
+ * True for SCORE_FLASH_DURATION_MS whenever the given score increases.
+ */
 function useScoreFlash(score: number | null | undefined): boolean {
   const prevScore = useRef<number | null | undefined>(score);
   const [flashing, setFlashing] = useState(false);
@@ -142,7 +302,10 @@ function useScoreFlash(score: number | null | undefined): boolean {
     if (prevScore.current !== score) {
       if (prevScore.current != null && (score ?? 0) > prevScore.current) {
         setFlashing(true);
-        const timeout = setTimeout(() => setFlashing(false), SCORE_FLASH_DURATION_MS);
+        const timeout = setTimeout(
+          () => setFlashing(false),
+          SCORE_FLASH_DURATION_MS,
+        );
         prevScore.current = score;
         return () => clearTimeout(timeout);
       }
@@ -153,82 +316,74 @@ function useScoreFlash(score: number | null | undefined): boolean {
   return flashing;
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+/**
+ * Plays the goal sound once per goal (i.e. whenever the combined score
+ * increases), and manages audio preload/unlock on mount.
+ */
+function useGoalSound(
+  homeScore: number | null | undefined,
+  awayScore: number | null | undefined,
+) {
+  const prevTotal = useRef<number | null>(
+    homeScore == null && awayScore == null
+      ? null
+      : (homeScore ?? 0) + (awayScore ?? 0),
+  );
+
+  useEffect(() => {
+    getGoalAudio();
+    attachAudioUnlockListeners();
+    primeAudioUnlock();
+  }, []);
+
+  useEffect(() => {
+    if (homeScore == null && awayScore == null) return;
+    const total = (homeScore ?? 0) + (awayScore ?? 0);
+
+    if (prevTotal.current != null && total > prevTotal.current) {
+      void playGoalSound();
+    }
+    prevTotal.current = total;
+  }, [homeScore, awayScore]);
+}
+
+/* ------------------------------------------------------------------ */
+/* Component                                                           */
+/* ------------------------------------------------------------------ */
 
 export default function MatchCard() {
   const params = useParams<{ matchId: string }>();
   const matchId = Number(params.matchId);
   const validMatchId = Number.isFinite(matchId) && matchId > 0;
 
-  const { data: match, isLoading, isError } = useGetMatchById(
-    validMatchId ? matchId : undefined,
-    {
-      // Auto-refetch every 30 seconds (30,000 ms) ONLY when match is LIVE
-      refetchInterval: (query) => (query.state.data?.status === "LIVE" ? 30000 : false),
-    }
-  );
+  const {
+    data: match,
+    isLoading,
+    isError,
+  } = useGetMatchById(validMatchId ? matchId : undefined, {
+    refetchInterval: (query) =>
+      query.state.data?.status === "LIVE" ? 30000 : false,
+  });
 
   const isLive = match?.status === "LIVE";
-  // Hooks are always called — never gated behind the early returns below —
-  // so they stay safe even while match is still undefined during load.
-  const liveMinute = useLiveMinute(match?.periodStartedAt, match?.period, isLive ?? false);
+
+  // All hooks run unconditionally — safe while match is undefined.
+  const liveMinute = useLiveMinute(
+    match?.periodStartedAt,
+    match?.period,
+    isLive ?? false,
+  );
   const homeScoreFlashing = useScoreFlash(match?.homeScore);
   const awayScoreFlashing = useScoreFlash(match?.awayScore);
-
-  function useLiveMinute(
-    periodStartedAt: string | null | undefined,
-    period: MatchPeriod | undefined,
-    isLive: boolean,
-  ): LiveMinute | null {
-    const [now, setNow] = useState(() => Date.now());
-    const tickable = isLive && !!period && RUNNING_CLOCK_PERIODS.has(period);
-
-    useEffect(() => {
-      if (!tickable) return;
-
-      // Reset current timestamp on mount/period change
-      setNow(Date.now());
-
-      // Update every 10 seconds to keep clock fresh and responsive
-      const interval = setInterval(() => {
-        setNow(Date.now());
-      }, 10_000);
-
-      return () => clearInterval(interval);
-    }, [tickable, periodStartedAt, period]);
-
-    return useMemo(() => {
-      if (!tickable || !period || !periodStartedAt) return null;
-
-      const baseMinute = PERIOD_BASE_MINUTE[period];
-      if (baseMinute === undefined) return null;
-
-      const startedAtMs = new Date(periodStartedAt).getTime();
-      if (Number.isNaN(startedAtMs)) return null;
-
-      const elapsedMs = now - startedAtMs;
-      const elapsedMinutes = Math.max(0, Math.floor(elapsedMs / 60_000));
-
-      const rawMinute = baseMinute + elapsedMinutes;
-
-      // Once play runs past the period's regulation length, freeze the
-      // minute at the cap and report the overrun separately as stoppage
-      // time (e.g. 48 raw minutes in the first half -> { minute: 45,
-      // stoppage: 3 }, displayed as "45+3'"). Periods with no cap (e.g.
-      // PENALTIES) just keep ticking normally.
-      const cap = PERIOD_CAP_MINUTE[period];
-      if (cap !== undefined && rawMinute > cap) {
-        return { minute: cap, stoppage: rawMinute - cap };
-      }
-      return { minute: rawMinute, stoppage: 0 };
-    }, [periodStartedAt, period, tickable, now]); // 'now' dependency triggers memo re-evaluation
-  }
+  useGoalSound(match?.homeScore, match?.awayScore);
 
   if (!validMatchId) {
     return (
-      <CardState icon={<AlertCircle size={18} />} title="Invalid match" message="No matchId found in the route." />
+      <CardState
+        icon={<AlertCircle size={18} />}
+        title="Invalid match"
+        message="No matchId found in the route."
+      />
     );
   }
 
@@ -246,13 +401,38 @@ export default function MatchCard() {
     );
   }
 
-  const hasScore = match?.status !== "SCHEDULED" && match?.homeScore !== null && match?.awayScore !== null;
+  const hasScore =
+    match.status !== "SCHEDULED" &&
+    match.homeScore !== null &&
+    match.awayScore !== null;
 
   return (
     <div className="w-full overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition-shadow hover:shadow-md">
+      <style>{`
+        @keyframes score-pop {
+          0% { transform: scale(1); }
+          35% { transform: scale(1.32); }
+          65% { transform: scale(0.94); }
+          100% { transform: scale(1); }
+        }
+        .score-pop { animation: score-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+        @keyframes team-name-pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.12); }
+        }
+        .team-name-pulse {
+          display: inline-block;
+          animation: team-name-pulse 0.9s ease-in-out infinite;
+        }
+      `}</style>
+
       {/* Competition header */}
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-2.5">
-        <Link href={`/competition/${match.competitionId}/fixtures`} className="flex min-w-0 items-center gap-2.5">
+        <Link
+          href={`/competition/${match.competitionId}/fixtures`}
+          className="flex min-w-0 items-center gap-2.5"
+        >
           {match.competitionLogoUrl ? (
             <div className="relative h-6 w-6 shrink-0 overflow-hidden rounded-full bg-white p-0.5 shadow-sm">
               <img
@@ -266,7 +446,9 @@ export default function MatchCard() {
             </div>
           ) : (
             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200/50 text-[8px] font-bold text-slate-500">
-              {match.competitionName ? getCompetitionInitials(match.competitionName) : "CUP"}
+              {match.competitionName
+                ? getCompetitionInitials(match.competitionName)
+                : "CUP"}
             </div>
           )}
           <span className="truncate text-[11px] font-semibold text-slate-700">
@@ -276,7 +458,9 @@ export default function MatchCard() {
 
         <div className="flex items-center gap-2 text-[10px] font-medium text-slate-400">
           <MapPin size={11} className="shrink-0" />
-          <span className="truncate max-w-30">{match.stadium ?? "Venue TBC"}</span>
+          <span className="truncate max-w-30">
+            {match.stadium ?? "Venue TBC"}
+          </span>
         </div>
       </div>
 
@@ -288,24 +472,27 @@ export default function MatchCard() {
           name={match.homeTeamName}
           logoUrl={match.homeTeamLogoUrl}
           align="left"
+          scoring={homeScoreFlashing}
         />
 
         <div className="flex shrink-0 flex-col items-center gap-1">
           {match.status === "SCHEDULED" ? (
-            <span className="text-lg font-black tracking-wide text-slate-300">VS</span>
+            <span className="text-lg font-black tracking-wide text-slate-300">
+              VS
+            </span>
           ) : (
             <div className="flex items-baseline gap-2 tabular-nums">
               <span
-                className={`rounded-lg px-2 text-3xl font-black text-slate-800 transition-colors duration-700 ${
-                  homeScoreFlashing ? "bg-rose-100" : "bg-transparent"
+                className={`inline-block rounded-lg px-2 text-3xl font-black transition-colors duration-500 ${
+                  homeScoreFlashing ? "score-pop text-red-600" : "text-slate-800"
                 }`}
               >
                 {hasScore ? match.homeScore : "–"}
               </span>
               <span className="text-lg font-bold text-slate-300">:</span>
               <span
-                className={`rounded-lg px-2 text-3xl font-black text-slate-800 transition-colors duration-700 ${
-                  awayScoreFlashing ? "bg-rose-100" : "bg-transparent"
+                className={`inline-block rounded-lg px-2 text-3xl font-black transition-colors duration-500 ${
+                  awayScoreFlashing ? "score-pop text-red-600" : "text-slate-800"
                 }`}
               >
                 {hasScore ? match.awayScore : "–"}
@@ -313,7 +500,11 @@ export default function MatchCard() {
             </div>
           )}
           <span className="text-[9px] font-medium text-slate-400">
-            {match.status === "SCHEDULED" ? "Kick-off" : match.status === "FINISHED" ? "FT" : ""}
+            {match.status === "SCHEDULED"
+              ? "Kick-off"
+              : match.status === "FINISHED"
+                ? "FT"
+                : ""}
           </span>
         </div>
 
@@ -323,6 +514,7 @@ export default function MatchCard() {
           name={match.awayTeamName}
           logoUrl={match.awayTeamLogoUrl}
           align="right"
+          scoring={awayScoreFlashing}
         />
       </div>
 
@@ -333,24 +525,34 @@ export default function MatchCard() {
           <span>{resolveKickoffLabel(match.matchDate, match.startedAt)}</span>
         </div>
 
-        <StatusBadge status={match.status} period={match.period} liveMinute={liveMinute} />
+        <StatusBadge
+          status={match.status}
+          period={match.period}
+          liveMinute={liveMinute}
+        />
       </div>
     </div>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Team label                                                          */
+/* ------------------------------------------------------------------ */
 
 function TeamLabel({
   teamId,
   code,
   name,
   logoUrl,
-  align
+  align,
+  scoring = false,
 }: {
   teamId: number | null;
   code: string;
   name: string | null;
   logoUrl?: string | null;
-  align: "left" | "right"
+  align: "left" | "right";
+  scoring?: boolean;
 }) {
   const content = (
     <>
@@ -366,21 +568,37 @@ function TeamLabel({
           />
         </div>
       ) : (
-        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-bold text-slate-400 ${align === "right" ? "order-1" : ""}`}>
+        <div
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-bold text-slate-400 ${
+            align === "right" ? "order-1" : ""
+          }`}
+        >
           {code}
         </div>
       )}
       <div className="min-w-0">
-        <p className="text-sm font-black tracking-tight text-slate-800">{code}</p>
-        <p className="truncate text-[10px] font-medium text-slate-400">{name ?? code}</p>
+        <p
+          className={`text-sm font-black tracking-tight transition-colors duration-500 sm:text-base ${
+            scoring ? "team-name-pulse text-red-600" : "text-slate-800"
+          }`}
+        >
+          {code}
+        </p>
+        <p
+          className={`truncate text-[10px] font-medium transition-colors duration-500 ${
+            scoring ? "text-red-500" : "text-slate-400"
+          }`}
+        >
+          {name ?? code}
+        </p>
       </div>
     </>
   );
 
-  const className = `flex min-w-0 flex-1 items-center gap-2.5 ${align === "right" ? "flex-row-reverse text-right" : "text-left"}`;
+  const className = `flex min-w-0 flex-1 items-center gap-2.5 ${
+    align === "right" ? "flex-row-reverse text-right" : "text-left"
+  }`;
 
-  // Only clickable once we actually have a teamId to route to — some
-  // matches (e.g. TBD fixtures) may not have both teams assigned yet.
   if (teamId == null) {
     return <div className={className}>{content}</div>;
   }
@@ -395,6 +613,10 @@ function TeamLabel({
     </Link>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Status badge                                                        */
+/* ------------------------------------------------------------------ */
 
 function StatusBadge({
   status,
@@ -414,13 +636,18 @@ function StatusBadge({
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75 motion-reduce:animate-none" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
             </span>
-            <span className="text-[10px] font-black uppercase tracking-[0.1em] text-red-600">Live</span>
-            <span className="text-[10px] font-black tabular-nums text-slate-500">{formatLiveMinute(liveMinute)}</span>
-            <span className="hidden text-[10px] font-medium text-slate-400 sm:inline">· {PERIOD_BADGE_LABELS[period]}</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.1em] text-red-600">
+              Live
+            </span>
+            <span className="text-[10px] font-black tabular-nums text-slate-500">
+              {formatLiveMinute(liveMinute)}
+            </span>
+            <span className="hidden text-[10px] font-medium text-slate-400 sm:inline">
+              · {PERIOD_BADGE_LABELS[period]}
+            </span>
           </div>
         );
       }
-      // LIVE status but a break period (HALF_TIME, EXTRA_TIME_HALF_TIME, etc.)
       return (
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-amber-400" />
@@ -431,8 +658,6 @@ function StatusBadge({
       );
 
     case "SUSPENDED":
-      // Play stopped mid-match but not yet abandoned — visually distinct
-      // from a scheduled break (amber, static) since this is unplanned.
       return (
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-orange-400" />
@@ -446,7 +671,9 @@ function StatusBadge({
       return (
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-slate-400" />
-          <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">Full-time</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
+            Full-time
+          </span>
         </div>
       );
 
@@ -492,7 +719,19 @@ function StatusBadge({
   }
 }
 
-function CardState({ icon, title, message }: { icon: React.ReactNode; title: string; message: string }) {
+/* ------------------------------------------------------------------ */
+/* Fallback states                                                     */
+/* ------------------------------------------------------------------ */
+
+function CardState({
+  icon,
+  title,
+  message,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  message: string;
+}) {
   return (
     <div className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200/80 bg-white p-6 text-center shadow-sm">
       <span className="grid h-9 w-9 place-items-center rounded-xl border border-rose-200/80 bg-rose-50 text-rose-600">

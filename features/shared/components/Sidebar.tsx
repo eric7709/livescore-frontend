@@ -8,11 +8,11 @@ import {
   UserCircle,
   Swords,
   ChevronRight,
-  Activity,
   Settings,
   LogOut,
   ArrowLeftRight,
 } from "lucide-react";
+import Logo from "./Logo";
 
 type NavItem = {
   name: string;
@@ -52,25 +52,7 @@ export default function Sidebar() {
 
       {/* Header */}
       <div className="relative px-5 pt-6 pb-5 border-b border-emerald-400/10">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-linear-to-br from-emerald-400 to-green-600 shadow-lg shadow-emerald-500/25">
-              <Activity size={18} className="text-white" />
-            </div>
-
-            <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-300 rounded-full border-2 border-[#071a12] animate-pulse" />
-          </div>
-
-          <div>
-            <h1 className="text-sm font-bold text-white tracking-tight leading-tight">
-              LiveMoore
-            </h1>
-
-            <p className="text-[10px] font-medium text-emerald-300/50 uppercase tracking-wider -mt-px">
-              Admin Panel
-            </p>
-          </div>
-        </div>
+        <Logo variant="dark" subtitle="Admin Panel" href="/admin" />
       </div>
 
       {/* Navigation */}

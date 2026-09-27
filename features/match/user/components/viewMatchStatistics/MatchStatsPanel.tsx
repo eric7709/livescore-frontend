@@ -98,16 +98,6 @@ export default function MatchStatsPanel() {
 
   return (
     <section className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.06)]">
-      <div className="flex items-center justify-between border-b border-slate-100 bg-[#102c25] px-4 py-4 text-white sm:px-5">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300">Match report</p>
-          <h2 className="mt-1 text-base font-black">By the numbers</h2>
-        </div>
-        <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.1em]">
-          <span className="h-2 w-2 rounded-full bg-emerald-400" /> Home
-          <span className="ml-2 h-2 w-2 rounded-full bg-sky-400" /> Away
-        </div>
-      </div>
       {periods.length > 0 && (
         <nav
           className="flex gap-2 overflow-x-auto border-b border-slate-100 bg-slate-50/70 px-4 py-3 sm:px-5"
@@ -154,8 +144,8 @@ function PeriodTab({
       onClick={onClick}
       className={`shrink-0 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] transition-colors ${
         active
-          ? "border-emerald-300 bg-emerald-600 text-white"
-          : "border-slate-200 bg-white text-slate-500 hover:border-emerald-200 hover:text-emerald-700"
+          ? "border-red-300 bg-red-600 text-white"
+          : "border-slate-200 bg-white text-slate-500 hover:border-red-200 hover:text-red-700"
       }`}
     >
       {label}
@@ -180,7 +170,7 @@ function StatLine({ stat }: { stat: EventTypeCount }) {
       {/* Row with values and center-split track */}
       <div className="grid w-full grid-cols-[28px_1fr_28px] items-center gap-2 sm:gap-3">
         {/* Home Value */}
-        <span className="text-right text-xs font-black tabular-nums text-emerald-700">
+        <span className="text-right text-xs font-black tabular-nums text-red-700">
           {stat.homeValue}
         </span>
         {/* Center-Split Track Container */}
@@ -188,7 +178,7 @@ function StatLine({ stat }: { stat: EventTypeCount }) {
           {/* Left Half (Home - Fills from center towards left) */}
           <div className="flex h-full w-1/2 justify-end">
             <span
-              className="h-full rounded-l-full bg-emerald-500 transition-[width] duration-500 ease-out"
+              className="h-full rounded-l-full bg-red-500 transition-[width] duration-500 ease-out"
               style={{ width: `${homeShare}%` }}
             />
           </div>
@@ -196,14 +186,14 @@ function StatLine({ stat }: { stat: EventTypeCount }) {
           {/* Right Half (Away - Fills from center towards right) */}
           <div className="flex h-full w-1/2 justify-start">
             <span
-              className="h-full rounded-r-full bg-sky-500 transition-[width] duration-500 ease-out"
+              className="h-full rounded-r-full bg-blue-500 transition-[width] duration-500 ease-out"
               style={{ width: `${awayShare}%` }}
             />
           </div>
         </div>
 
         {/* Away Value */}
-        <span className="text-left text-xs font-black tabular-nums text-sky-700">
+        <span className="text-left text-xs font-black tabular-nums text-blue-700">
           {stat.awayValue}
         </span>
       </div>
@@ -225,7 +215,7 @@ function PanelState({
   const styles =
     tone === "error"
       ? "border-rose-200 bg-rose-50 text-rose-600"
-      : "border-emerald-200 bg-emerald-50 text-emerald-600";
+      : "border-slate-200 bg-slate-50 text-slate-600";
 
   return (
     <section className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
@@ -239,19 +229,12 @@ function PanelState({
 function StatsSkeleton() {
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
-        <span className="h-9 w-9 animate-pulse rounded-xl bg-slate-100" />
-        <div className="space-y-2">
-          <span className="block h-2 w-20 animate-pulse rounded bg-slate-100" />
-          <span className="block h-3 w-28 animate-pulse rounded bg-slate-100" />
-        </div>
-      </div>
       <div className="space-y-6 p-5">
         {Array.from({ length: 5 }).map((_, index) => (
           <div key={index} className="grid grid-cols-[28px_1fr_28px] items-center gap-3">
-            <span className="h-2 animate-pulse rounded bg-emerald-50" />
+            <span className="h-2 animate-pulse rounded bg-red-50" />
             <span className="h-1.5 animate-pulse rounded-full bg-slate-100" />
-            <span className="h-2 animate-pulse rounded bg-sky-50" />
+            <span className="h-2 animate-pulse rounded bg-blue-50" />
           </div>
         ))}
       </div>

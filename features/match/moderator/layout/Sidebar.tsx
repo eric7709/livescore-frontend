@@ -12,46 +12,11 @@ import {
 } from "lucide-react";
 import { NAV_ITEMS } from "./nav";
 import { useGetAllMatches } from "@/features/match/utils/match.api";
+import Logo from "@/features/shared/components/Logo";
 
 function isActive(pathname: string, href: string) {
   if (href === "/moderator") return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
-}
-
-/* ── Crest ────────────────────────────────────── */
-
-function CrestMark() {
-  return (
-    <svg viewBox="0 0 32 32" className="h-7 w-7 shrink-0">
-      <circle
-        cx="16"
-        cy="16"
-        r="14"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        className="text-[#3A4048]"
-      />
-      <circle
-        cx="16"
-        cy="16"
-        r="5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        className="text-[#2F8F5B]"
-      />
-      <line
-        x1="16"
-        y1="2"
-        x2="16"
-        y2="8"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        className="text-[#3A4048]"
-      />
-    </svg>
-  );
 }
 
 /* ── Live block ───────────────────────────────── */
@@ -223,17 +188,9 @@ function SidebarContent({
 }) {
   return (
     <div className="flex h-full flex-col bg-[#15181D] text-[#8B93A1]">
-      {/* Header */}
-      <div className="flex items-center gap-2.5 border-b border-[#1F242B] px-4 py-4">
-        <CrestMark />
-        <div className="min-w-0">
-          <p className="truncate font-[var(--font-display)] text-sm font-medium tracking-tight text-[#F5F6F7]">
-            Matchday Ops
-          </p>
-          <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[#4A515B]">
-            Moderator
-          </p>
-        </div>
+      {/* Brand */}
+      <div className="border-b border-[#1F242B] px-4 py-4">
+        <Logo variant="dark" subtitle="Moderator" href="/moderator" />
       </div>
 
       {/* Live block */}

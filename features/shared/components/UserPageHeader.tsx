@@ -71,9 +71,9 @@ export default function UserPageHeader() {
   ];
 
   return (
-    <header className={`${inter.variable} sticky top-0 z-50 w-full border-b border-slate-200/80 bg-white/95 backdrop-blur-md`}>
+    <header className={`${inter.variable} z-50 w-full border-b border-slate-200/80 bg-white/95 backdrop-blur-md`}>
       {/* Top Navbar */}
-      <div className="mx-auto flex items-center justify-between px-4 py-3 sm:px-6">
+      <div className="mx-auto flex h-15 items-center justify-between px-4 py-3 sm:px-6">
         <Logo />
 
         {/* Global Action Icons */}

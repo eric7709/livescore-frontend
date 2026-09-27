@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { X } from "lucide-react";
+import { X, AlertTriangle } from "lucide-react";
 import { useGetMatchById } from "@/features/match/utils/match.api";
 import { useGetMatchPlayerStats } from "@/features/matchLineup/utils/matchLineup.api";
 import { useMatchTrackerStore } from "../../utils/matchTracker.store";
@@ -19,6 +19,7 @@ export default function RedCardModal() {
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const teamCode = MatchEventUtils.getTeamSideAndCode(teamId, match);
   const bookableSquad = MatchEventUtils.getBookableSquad(playerStats, Number(teamId), match);
+
   const handleSubmit = (): void => {
     const payload = MatchEventUtils.buildEventPayload(
       matchId,
@@ -47,8 +48,6 @@ export default function RedCardModal() {
 
   return (
     <div className="fixed inset-0 z-50 h-screen w-screen bg-slate-950/40 backdrop-blur-md">
-      
-
       <div className="flex h-full w-full flex-col overflow-hidden bg-white font-body">
         {/* Header */}
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#E4E7EC] bg-linear-to-b from-[#FEF1F3] to-white px-5 py-4">
@@ -80,33 +79,61 @@ export default function RedCardModal() {
           </div>
         </div>
 
+        {/* Info banner — explains why some players are locked out */}
+        <div className="flex shrink-0 items-start gap-2 border-b border-[#FDE68A] bg-[#FFFBEB] px-5 py-2.5">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-[#B45309]" />
+          <p className="text-[11px] leading-relaxed text-[#92400E]">
+            Players already on a yellow card can&apos;t be given a straight red — book their{" "}
+            <span className="font-semibold">2nd yellow</span> from the Yellow Card panel instead, it will
+            be recorded as a sending-off automatically.
+          </p>
+        </div>
+
         {/* Player List */}
         <div className="flex-1 divide-y divide-[#EEF0F3] overflow-y-auto">
           {bookableSquad?.map((player) => {
             const isSelected = selectedPlayerId === player.playerId;
+            const alreadyOnYellow = player.bookingStatus === "YELLOW_CARD";
 
             return (
               <button
                 key={player.playerId}
                 type="button"
-                onClick={() => setSelectedPlayerId(player.playerId)}
-                className={`group relative flex w-full items-center gap-3 px-5 py-2.5 text-left transition-colors focus:outline-none focus-visible:bg-[#F9FAFB] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#9E1239] ${isSelected
+                disabled={alreadyOnYellow}
+                aria-disabled={alreadyOnYellow}
+                title={
+                  alreadyOnYellow
+                    ? "Already on a yellow — this needs a 2nd yellow, not a straight red"
+                    : undefined
+                }
+                onClick={() => {
+                  if (alreadyOnYellow) return;
+                  setSelectedPlayerId(player.playerId);
+                }}
+                className={`group relative flex w-full items-center gap-3 px-5 py-2.5 text-left transition-colors focus:outline-none focus-visible:bg-[#F9FAFB] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#9E1239] ${
+                  alreadyOnYellow
+                    ? "cursor-not-allowed bg-[#F9FAFB]/60 opacity-60"
+                    : isSelected
                     ? "bg-[#FEF1F3]/50"
                     : "hover:bg-[#F9FAFB]"
-                  }`}
+                }`}
               >
                 <span
-                  className={`absolute bottom-0 left-0 top-0 w-[3px] bg-[#9E1239] transition-transform duration-150 ${isSelected
+                  className={`absolute bottom-0 left-0 top-0 w-[3px] bg-[#9E1239] transition-transform duration-150 ${
+                    isSelected && !alreadyOnYellow
                       ? "scale-y-100"
                       : "scale-y-0 group-hover:scale-y-100 group-focus-visible:scale-y-100"
-                    }`}
+                  }`}
                 />
 
                 <span
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border font-condensed text-sm font-bold transition-colors ${isSelected
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border font-condensed text-sm font-bold transition-colors ${
+                    alreadyOnYellow
+                      ? "border-[#E4E7EC] bg-[#F2F4F7] text-[#98A2B3]"
+                      : isSelected
                       ? "border-[#9E1239] bg-[#FEF1F3] text-[#9E1239]"
                       : "border-[#E4E7EC] bg-[#F9FAFB] text-[#101828] group-hover:border-[#9E1239]/40 group-hover:text-[#9E1239]"
-                    }`}
+                  }`}
                 >
                   {player.squadNumber}
                 </span>
@@ -116,18 +143,21 @@ export default function RedCardModal() {
                     {player.playerName}
                   </span>
 
-                  {player.bookingStatus === "YELLOW_CARD" && (
+                  {alreadyOnYellow && (
                     <span className="font-condensed text-[10px] font-bold uppercase tracking-wide text-[#B45309]">
-                      Already on a yellow
+                      Already on a yellow — use 2nd yellow instead
                     </span>
                   )}
                 </span>
 
                 <span
-                  className={`ml-auto h-4 w-3 shrink-0 rounded-[2px] border-2 transition-colors ${isSelected
+                  className={`ml-auto h-4 w-3 shrink-0 rounded-[2px] border-2 transition-colors ${
+                    alreadyOnYellow
+                      ? "border-[#D0D5DD] bg-transparent opacity-50"
+                      : isSelected
                       ? "border-[#9E1239] bg-[#9E1239]"
                       : "border-[#D0D5DD] bg-transparent group-hover:border-[#9E1239] group-hover:bg-[#9E1239]"
-                    }`}
+                  }`}
                 />
               </button>
             );

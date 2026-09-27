@@ -48,11 +48,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${poppins.className} `}>
         <Providers>
-          <div className="min-h-screen bg-slate-50 text-slate-900">
+          <div className="h-screen flex flex-col bg-slate-50 text-slate-900">
             <Suspense fallback={<div className="h-16 w-full border-b border-slate-200 bg-white" />}>
               <UserPageHeader />
             </Suspense>
-            <main className="">
+            <main className="flex-1 overflow-y-auto">
               <Suspense fallback={null}>
                 <AuthProvider>{children}</AuthProvider>
               </Suspense>

@@ -43,6 +43,13 @@ type NextInfo = {
 
 type TeamTone = "home" | "away";
 
+type ClockInfo = {
+  minute: number;
+  seconds: number;
+  displayTime: string;
+  displayFull: string;
+};
+
 const NON_RECORDING_PERIODS = new Set<MatchPeriod>([
   "PRE_MATCH",
   "HALF_TIME",
@@ -56,6 +63,15 @@ const PERIOD_BASE_MINUTE: Partial<Record<MatchPeriod, number>> = {
   EXTRA_TIME_FIRST_HALF: 90,
   EXTRA_TIME_SECOND_HALF: 105,
   PENALTIES: 120,
+};
+
+// Regulation cap per period — once the running minute exceeds this,
+// display switches to "cap+extra" stoppage-time notation (e.g. "45+2'").
+const PERIOD_CAP: Partial<Record<MatchPeriod, number>> = {
+  FIRST_HALF: 45,
+  SECOND_HALF: 90,
+  EXTRA_TIME_FIRST_HALF: 105,
+  EXTRA_TIME_SECOND_HALF: 120,
 };
 
 const PERIOD_DETAILS: Record<
@@ -145,7 +161,10 @@ const TONE_STYLES = {
 // -----------------------------------------------------------------------------
 // Live Match Minute Hook
 // -----------------------------------------------------------------------------
-function useLiveMatchClock(period: MatchPeriod, periodStartedAt?: string | null) {
+function useLiveMatchClock(
+  period: MatchPeriod,
+  periodStartedAt?: string | null,
+): ClockInfo | null {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -177,11 +196,15 @@ function useLiveMatchClock(period: MatchPeriod, periodStartedAt?: string | null)
     const minute = baseMinute + elapsedMinutes;
     const formattedSecond = seconds.toString().padStart(2, "0");
 
+    const cap = PERIOD_CAP[period];
+    const displayMinute =
+      cap !== undefined && minute > cap ? `${cap}+${minute - cap}` : `${minute}`;
+
     return {
       minute,
       seconds,
-      displayTime: `${minute}'`,
-      displayFull: `${minute}:${formattedSecond}'`,
+      displayTime: `${displayMinute}'`,
+      displayFull: `${displayMinute}:${formattedSecond}'`,
     };
   }, [now, period, periodStartedAt]);
 }
@@ -441,7 +464,7 @@ function ScoreHeader({
   homeScore: number;
   awayScore: number;
   isRecordingOpen: boolean;
-  clock: { minute: number; seconds: number; displayTime: string; displayFull: string } | null;
+  clock: ClockInfo | null;
 }) {
   const phase = PERIOD_DETAILS[match.period];
   const showScore = match.status === "LIVE" || match.status === "FINISHED" || match.period === "PENALTIES";
@@ -585,7 +608,7 @@ function MatchControlPanel({
   lineupsMissing: boolean;
   pending: boolean;
   updateError: string | null;
-  clock: { minute: number; seconds: number; displayTime: string; displayFull: string } | null;
+  clock: ClockInfo | null;
   onAdvance: () => void;
 }) {
   const isComplete = match.period === "FULL_TIME";

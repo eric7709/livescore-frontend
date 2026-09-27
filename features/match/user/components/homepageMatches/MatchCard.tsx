@@ -3,13 +3,12 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { scoreMono } from "@/public/fonts/fonts";
-import { Clock } from "lucide-react";
 import { MatchPeriod, MatchSummary } from "@/features/match/utils/match.types";
 
 interface MatchCardProps {
   match: MatchSummary;
 }
-// How long the score-changed highlight stays visible.
+
 const SCORE_FLASH_DURATION_MS = 2500;
 
 export default function MatchCard({ match }: MatchCardProps) {
@@ -51,7 +50,6 @@ export default function MatchCard({ match }: MatchCardProps) {
       const now = new Date().getTime();
       const elapsed = Math.floor((now - startTime) / 60000);
 
-      // baseMinute = start of this period, cap = regulation end of this period
       let baseMinute = 1;
       let cap = 45;
       if (match.period === "SECOND_HALF") {
@@ -65,8 +63,6 @@ export default function MatchCard({ match }: MatchCardProps) {
         cap = 120;
       }
       const currentMinute = Math.max(1, baseMinute + elapsed);
-      // Once the period runs past its regulation length, show stoppage time
-      // as "45+N'" instead of ticking past the cap.
       if (currentMinute > cap) {
         return `${cap}+${currentMinute - cap}'`;
       }
@@ -82,10 +78,6 @@ export default function MatchCard({ match }: MatchCardProps) {
     return () => clearInterval(interval);
   }, [isLive, match.period, match.periodStartedAt]);
 
-  // --- Score-change flash ---------------------------------------------------
-  // Tracks each team's previous score so we can detect a change on re-render
-  // (e.g. after a WebSocket-triggered refetch pushes new props in) and flash
-  // just that team's row, independent of the other team's.
   const prevHomeScore = useRef<number | null | undefined>(match.homeScore);
   const prevAwayScore = useRef<number | null | undefined>(match.awayScore);
 
@@ -94,10 +86,15 @@ export default function MatchCard({ match }: MatchCardProps) {
 
   useEffect(() => {
     if (prevHomeScore.current !== match.homeScore) {
-      // Only flash on an actual increase, not on the first render or a reset.
-      if (prevHomeScore.current != null && (match.homeScore ?? 0) > prevHomeScore.current) {
+      if (
+        prevHomeScore.current != null &&
+        (match.homeScore ?? 0) > prevHomeScore.current
+      ) {
         setHomeFlashing(true);
-        const timeout = setTimeout(() => setHomeFlashing(false), SCORE_FLASH_DURATION_MS);
+        const timeout = setTimeout(
+          () => setHomeFlashing(false),
+          SCORE_FLASH_DURATION_MS
+        );
         prevHomeScore.current = match.homeScore;
         return () => clearTimeout(timeout);
       }
@@ -107,16 +104,21 @@ export default function MatchCard({ match }: MatchCardProps) {
 
   useEffect(() => {
     if (prevAwayScore.current !== match.awayScore) {
-      if (prevAwayScore.current != null && (match.awayScore ?? 0) > prevAwayScore.current) {
+      if (
+        prevAwayScore.current != null &&
+        (match.awayScore ?? 0) > prevAwayScore.current
+      ) {
         setAwayFlashing(true);
-        const timeout = setTimeout(() => setAwayFlashing(false), SCORE_FLASH_DURATION_MS);
+        const timeout = setTimeout(
+          () => setAwayFlashing(false),
+          SCORE_FLASH_DURATION_MS
+        );
         prevAwayScore.current = match.awayScore;
         return () => clearTimeout(timeout);
       }
       prevAwayScore.current = match.awayScore;
     }
   }, [match.awayScore]);
-  // ---------------------------------------------------------------------------
 
   const formatKickoffTime = (dateIso?: string) => {
     if (!dateIso) return "";
@@ -152,100 +154,172 @@ export default function MatchCard({ match }: MatchCardProps) {
     match.period === "PENALTIES" ||
     match.period === "PRE_MATCH";
 
+  const showScore = isLive || isFinished;
+
+  const homeScore = match.homeScore ?? 0;
+  const awayScore = match.awayScore ?? 0;
+  const isHomeWinner = isFinished && homeScore > awayScore;
+  const isAwayWinner = isFinished && awayScore > homeScore;
+
+  const cornerStatus = isLive
+    ? formatPeriodLabel(match.period)
+    : isFinished
+    ? "FT"
+    : isPostponedOrCancelled
+    ? match.status
+    : "SCHEDULED";
+
   return (
     <Link
       href={`/match/${match.id}`}
-      className="group flex items-center justify-between rounded-xl border border-slate-200/80 bg-white p-2.5 shadow-2xs transition-all hover:border-slate-300 hover:shadow-sm md:p-2"
+      className={`group relative flex overflow-hidden rounded-xl border bg-white transition-all duration-150 hover:shadow-[0_6px_18px_-8px_rgba(20,83,45,0.2)] ${
+        isLive
+          ? "border-rose-200 hover:border-rose-400"
+          : "border-slate-200 hover:border-[#14532D]/40"
+      }`}
     >
-      {/* Teams Info */}
-      <div className="flex flex-1 flex-col gap-1.5 pr-3 min-w-0">
-        {/* Home Team */}
+      {/* ── Left Content Block ────────────────────── */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Header Bar */}
         <div
-          className={`flex items-center justify-between gap-2 rounded-md px-1 -mx-1 transition-colors duration-700 ${homeFlashing ? "bg-rose-100" : "bg-transparent"
-            }`}
+          className={`flex items-center gap-1.5 border-b px-3 py-1 ${
+            isLive
+              ? "border-rose-200 bg-rose-50/70"
+              : isPostponedOrCancelled
+              ? "border-amber-200 bg-amber-50"
+              : "border-slate-100 bg-slate-50/60"
+          }`}
         >
-          <span className="truncate text-xs font-medium text-slate-800 transition-colors group-hover:text-emerald-600 md:text-[12px]">
-            {match.homeTeamName}
+          {isLive && !isIntervalPeriod && (
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-600 opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-rose-600" />
+            </span>
+          )}
+          <span
+            className={`${scoreMono.className} text-[9px] font-extrabold uppercase tracking-[0.18em] ${
+              isLive
+                ? "text-rose-600"
+                : isPostponedOrCancelled
+                ? "text-amber-700"
+                : "text-slate-400"
+            }`}
+          >
+            {cornerStatus}
           </span>
-          {(isLive || isFinished) && (
-            <span className={`${scoreMono.className} text-xs font-bold text-slate-900 md:text-[11px]`}>
-              {match.homeScore ?? 0}
+
+          {isLive && elapsedMinute && (
+            <>
+              <span className="text-rose-300">·</span>
+              <span
+                className={`${scoreMono.className} text-[9px] font-bold tabular-nums text-rose-600`}
+              >
+                {elapsedMinute}
+              </span>
+            </>
+          )}
+
+          {!isLive && !isFinished && !isPostponedOrCancelled && (
+            <span
+              className={`${scoreMono.className} ml-auto text-[10px] font-bold tabular-nums text-slate-500`}
+            >
+              {formatKickoffTime(match.matchDate)}
             </span>
           )}
         </div>
 
-        {/* Away Team */}
-        <div
-          className={`flex items-center justify-between gap-2 rounded-md px-1 -mx-1 transition-colors duration-700 ${awayFlashing ? "bg-rose-100" : "bg-transparent"
-            }`}
-        >
-          <span className="truncate text-xs font-medium text-slate-800 transition-colors group-hover:text-emerald-600 md:text-[12px]">
-            {match.awayTeamName}
-          </span>
-          {(isLive || isFinished) && (
-            <span className={`${scoreMono.className} text-xs font-bold text-slate-900 md:text-[11px]`}>
-              {match.awayScore ?? 0}
+        {/* Team Names */}
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-2 px-3 py-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span
+              className={`min-w-0 flex-1 truncate text-[13px] transition-colors group-hover:text-[#14532D] ${
+                homeFlashing
+                  ? "font-bold text-rose-600"
+                  : isFinished
+                  ? isHomeWinner
+                    ? "font-bold text-slate-900"
+                    : "font-normal text-slate-400"
+                  : "font-semibold text-slate-800"
+              }`}
+            >
+              {match.homeTeamName}
             </span>
-          )}
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <span
+              className={`min-w-0 flex-1 truncate text-[13px] transition-colors group-hover:text-[#14532D] ${
+                awayFlashing
+                  ? "font-bold text-rose-600"
+                  : isFinished
+                  ? isAwayWinner
+                    ? "font-bold text-slate-900"
+                    : "font-normal text-slate-400"
+                  : "font-semibold text-slate-800"
+              }`}
+            >
+              {match.awayTeamName}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Status & Time Widget */}
-      <div className="flex shrink-0 min-w-[70px] flex-col items-end justify-center border-l border-slate-100 pl-3 md:min-w-[60px] md:pl-2.5">
-        {/* LIVE State */}
-        {isLive && (
-          <div className="flex flex-col items-end gap-0.5">
-            <div className="flex items-center gap-1 rounded-full bg-rose-50 px-1.5 py-0.5">
-              {!isIntervalPeriod && (
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-rose-500" />
-                </span>
-              )}
-              <span className={`${scoreMono.className} text-[9px] font-extrabold uppercase text-rose-600 tracking-wider`}>
-                {formatPeriodLabel(match.period)}
-              </span>
-            </div>
-            {/* Minute Display */}
-            {elapsedMinute && (
-              <span className={`${scoreMono.className} text-[9px] font-bold text-rose-600`}>
-                {elapsedMinute}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* SCHEDULED State */}
-        {match.status === "SCHEDULED" && (
-          <div className="flex flex-col items-end gap-0.5">
-            <div className="flex items-center gap-1 text-slate-400">
-              <Clock size={11} />
-              <span className={`${scoreMono.className} text-[11px] font-bold text-slate-700 md:text-[10px]`}>
-                {formatKickoffTime(match.matchDate)}
-              </span>
-            </div>
-            <span className={`${scoreMono.className} text-[9px] font-semibold uppercase tracking-wider text-slate-400`}>
-              Sched
+      {/* ── Right Score Rail ──────────────────────── */}
+      <div
+        className={`flex w-[54px] shrink-0 flex-col items-center justify-center gap-1 border-l ${
+          isLive
+            ? "border-rose-200 bg-rose-50/70"
+            : isFinished
+            ? "border-slate-200 bg-slate-100/70"
+            : isPostponedOrCancelled
+            ? "border-amber-200 bg-amber-50"
+            : "border-slate-100 bg-slate-50/60"
+        }`}
+      >
+        {showScore ? (
+          <>
+            <span
+              className={`${scoreMono.className} text-[16px] font-extrabold leading-none tabular-nums transition-colors ${
+                homeFlashing
+                  ? "text-rose-600"
+                  : isFinished && !isHomeWinner
+                  ? "text-slate-400"
+                  : "text-slate-900"
+              }`}
+            >
+              {homeScore}
             </span>
-          </div>
-        )}
-
-        {/* FINISHED State */}
-        {isFinished && (
-          <div className="flex flex-col items-end">
-            <span className={`${scoreMono.className} text-[10px] font-extrabold uppercase tracking-wider text-slate-400 md:text-[9px]`}>
-              FT
+            <span
+              aria-hidden
+              className={`h-px w-3 ${
+                isLive ? "bg-rose-200" : "bg-slate-300"
+              }`}
+            />
+            <span
+              className={`${scoreMono.className} text-[16px] font-extrabold leading-none tabular-nums transition-colors ${
+                awayFlashing
+                  ? "text-rose-600"
+                  : isFinished && !isAwayWinner
+                  ? "text-slate-400"
+                  : "text-slate-900"
+              }`}
+            >
+              {awayScore}
             </span>
-          </div>
-        )}
-
-        {/* POSTPONED / CANCELLED State */}
-        {isPostponedOrCancelled && (
-          <div className="flex flex-col items-end">
-            <span className={`${scoreMono.className} rounded bg-amber-50 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-700`}>
-              {match.status}
-            </span>
-          </div>
+          </>
+        ) : isPostponedOrCancelled ? (
+          <span
+            className={`${scoreMono.className} text-[10px] font-bold uppercase tracking-wider text-amber-700`}
+            style={{ writingMode: "vertical-rl" }}
+          >
+            {match.status}
+          </span>
+        ) : (
+          <span
+            className={`${scoreMono.className} text-[13px] font-extrabold uppercase text-slate-400`}
+          >
+            VS
+          </span>
         )}
       </div>
     </Link>
